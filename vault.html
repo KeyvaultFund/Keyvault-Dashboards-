@@ -927,11 +927,18 @@
                     <h2 class="chart-title">Net APY Performance</h2>
                     <p class="chart-caption" id="apyChartCaption">Annualized investor net APY from the cross-platform launch date.</p>
                 </div>
-                <div class="period-controls" aria-label="APY chart period">
-                    <button class="period-btn active" data-apy-period="all" type="button">All</button>
-                    <button class="period-btn" data-apy-period="180" type="button">180D</button>
-                    <button class="period-btn" data-apy-period="90" type="button">90D</button>
-                    <button class="period-btn" data-apy-period="30" type="button">30D</button>
+                <div class="chart-actions">
+                    <label class="toggle-control" for="legacyApyOverlayToggle">
+                        <input id="legacyApyOverlayToggle" type="checkbox">
+                        <span class="toggle-track" aria-hidden="true"></span>
+                        <span>Legacy APY</span>
+                    </label>
+                    <div class="period-controls" aria-label="APY chart period">
+                        <button class="period-btn active" data-apy-period="all" type="button">All</button>
+                        <button class="period-btn" data-apy-period="180" type="button">180D</button>
+                        <button class="period-btn" data-apy-period="90" type="button">90D</button>
+                        <button class="period-btn" data-apy-period="30" type="button">30D</button>
+                    </div>
                 </div>
             </div>
             <div class="chart-wrap">
@@ -968,6 +975,7 @@
         let activeReturnPeriod = 'all';
         let activeApyPeriod = 'all';
         let showLegacyReturnOverlay = false;
+        let showLegacyApyOverlay = false;
 
         const statusDot = document.getElementById('statusDot');
         const statusText = document.getElementById('statusText');
@@ -976,6 +984,7 @@
         const returnChartCaption = document.getElementById('returnChartCaption');
         const apyChartCaption = document.getElementById('apyChartCaption');
         const legacyOverlayToggle = document.getElementById('legacyOverlayToggle');
+        const legacyApyOverlayToggle = document.getElementById('legacyApyOverlayToggle');
         const legacyMenuBtn = document.getElementById('legacyMenuBtn');
         const legacyMenu = document.getElementById('legacyMenu');
         const legacyStats = document.getElementById('legacyStats');
@@ -1163,6 +1172,27 @@
 
                 const grossReturn = rebaseCumulativeReturn(legacyPoint.value, legacyBasePoint.value);
                 return netCumulativeFromGrossReturn(grossReturn, daysBetween(legacyBasePoint.date, legacyPoint.date));
+            });
+        }
+
+        function getCalendarMatchedLegacyApySeries(labels, comparison) {
+            const legacyBasePoint = findPointOnOrBefore(HISTORICAL_DRIFT_REFERENCE, comparison.startDate)
+                || findPointOnOrAfter(HISTORICAL_DRIFT_REFERENCE, comparison.startDate);
+            const legacyLatestPoint = HISTORICAL_DRIFT_REFERENCE[HISTORICAL_DRIFT_REFERENCE.length - 1];
+
+            if (!legacyBasePoint) return labels.map(() => null);
+
+            return labels.map(date => {
+                if (!isOnOrAfter(date, legacyBasePoint.date) || !isOnOrBefore(date, legacyLatestPoint.date)) {
+                    return null;
+                }
+
+                const legacyPoint = findPointOnOrBefore(HISTORICAL_DRIFT_REFERENCE, date);
+                if (!legacyPoint) return null;
+
+                const grossReturn = rebaseCumulativeReturn(legacyPoint.value, legacyBasePoint.value);
+                const grossApy = (grossReturn / daysBetween(legacyBasePoint.date, legacyPoint.date)) * 365;
+                return applyInvestorNetFeeModel(grossApy);
             });
         }
 
@@ -1557,14 +1587,16 @@
             const latest = reportData.points[reportData.points.length - 1];
             const strategyPoints = filterPointsByPeriod(reportData.points, latest.date, activeApyPeriod)
                 .filter(point => isOnOrAfter(point.date, comparison.startDate));
+            const labels = strategyPoints.map(point => point.date);
 
             return {
-                labels: strategyPoints.map(point => point.date),
+                labels,
                 apyData: strategyPoints.map(point => {
                     const grossReturn = rebaseCumulativeReturn(point.value, comparison.strategyBaseValue);
                     const grossApy = (grossReturn / daysBetween(comparison.startDate, point.date)) * 365;
                     return applyInvestorNetFeeModel(grossApy);
-                })
+                }),
+                legacyApyData: getCalendarMatchedLegacyApySeries(labels, comparison)
             };
         }
 
@@ -1734,8 +1766,40 @@
         }
 
         function renderApyChart() {
-            const { labels, apyData } = getApyChartSeries();
+            const { labels, apyData, legacyApyData } = getApyChartSeries();
             const comparison = getOverlapComparison();
+            const datasets = [
+                {
+                    label: 'Cross-platform performance',
+                    data: apyData,
+                    borderColor: '#35c3f7',
+                    backgroundColor: 'rgba(53, 195, 247, 0.1)',
+                    borderWidth: 3,
+                    tension: 0.28,
+                    fill: true,
+                    pointRadius: 0,
+                    pointHoverRadius: 5,
+                    spanGaps: false,
+                    order: 1
+                }
+            ];
+
+            if (showLegacyApyOverlay) {
+                datasets.push({
+                    label: 'Legacy APY (same dates)',
+                    data: legacyApyData,
+                    borderColor: '#5ad7ff',
+                    backgroundColor: 'rgba(90, 215, 255, 0)',
+                    borderWidth: 2,
+                    borderDash: [6, 6],
+                    tension: 0.25,
+                    fill: false,
+                    pointRadius: 0,
+                    pointHoverRadius: 4,
+                    spanGaps: false,
+                    order: 2
+                });
+            }
 
             if (apyChartInstance) apyChartInstance.destroy();
 
@@ -1743,34 +1807,32 @@
                 type: 'line',
                 data: {
                     labels,
-                    datasets: [
-                        {
-                            label: 'Cross-platform performance',
-                            data: apyData,
-                            borderColor: '#35c3f7',
-                            backgroundColor: 'rgba(53, 195, 247, 0.1)',
-                            borderWidth: 3,
-                            tension: 0.28,
-                            fill: true,
-                            pointRadius: 0,
-                            pointHoverRadius: 5,
-                            spanGaps: false
-                        }
-                    ]
+                    datasets
                 },
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
                     interaction: { mode: 'index', intersect: false },
                     plugins: {
-                        legend: { display: false },
+                        legend: {
+                            display: true,
+                            labels: {
+                                color: '#8b8ba7',
+                                usePointStyle: true,
+                                boxWidth: 8,
+                                font: { size: 12, weight: '700' }
+                            }
+                        },
                         tooltip: {
                             backgroundColor: 'rgba(26, 26, 62, 0.96)',
                             titleColor: '#fff',
                             bodyColor: '#c8c8e0',
                             callbacks: {
                                 title: items => formatDate(labels[items[0].dataIndex]),
-                                label: ctx => ` Cross-platform performance: ${formatPercent(ctx.parsed.y)}`
+                                label: ctx => {
+                                    if (ctx.parsed.y === null) return null;
+                                    return ` ${ctx.dataset.label}: ${formatPercent(ctx.parsed.y)}`;
+                                }
                             }
                         }
                     },
@@ -1799,7 +1861,9 @@
                 }
             });
 
-            apyChartCaption.textContent = `Annualized investor net APY from ${formatDate(comparison.startDate)} through each report date. Period buttons change the visible window, not the fee model.`;
+            apyChartCaption.textContent = showLegacyApyOverlay
+                ? `Annualized investor net APY from ${formatDate(comparison.startDate)} through each report date. The dotted legacy APY line uses the same calendar dates where legacy data is available.`
+                : `Annualized investor net APY from ${formatDate(comparison.startDate)} through each report date. Toggle Legacy APY to compare against same-date legacy performance.`;
         }
 
         function renderSourceMeta() {
@@ -1874,6 +1938,11 @@
         legacyOverlayToggle.addEventListener('change', () => {
             showLegacyReturnOverlay = legacyOverlayToggle.checked;
             if (reportData) renderReturnChart();
+        });
+
+        legacyApyOverlayToggle.addEventListener('change', () => {
+            showLegacyApyOverlay = legacyApyOverlayToggle.checked;
+            if (reportData) renderApyChart();
         });
 
         document.querySelectorAll('[data-apy-period]').forEach(button => {
