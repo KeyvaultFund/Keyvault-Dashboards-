@@ -4,7 +4,7 @@
   "timezone": "America/Los_Angeles",
   "targetDailyStampHourLocal": 14,
   "targetDailyStampLabel": "2:00 PM PT",
-  "lastUpdated": "2026-06-28T21:00:29.355Z",
+  "lastUpdated": "2026-06-29T21:01:32.159Z",
   "snapshots": [
     {
       "date": "2026-04-15",
@@ -278,6 +278,27 @@
       "vaultLastUpdatedPacific": "June 17, 2026 at 11:31:32 AM PDT",
       "highWaterMarkLastUpdatedTs": "2026-06-17T18:31:32.000Z",
       "highWaterMarkLastUpdatedPacific": "June 17, 2026 at 11:31:32 AM PDT"
+    },
+    {
+      "date": "2026-06-29",
+      "timestamp": "2026-06-29T21:01:32.159Z",
+      "capturedAtPacific": "June 29, 2026 at 2:01:32 PM PDT",
+      "slot": 429740809,
+      "sharePrice": 1.001787781146,
+      "circulatingSharePrice": 1.062752646691,
+      "totalValueUsdc": 734.552093,
+      "lpSupply": 691.17879432,
+      "dilutedLpSupply": 733.241218175,
+      "unharvestedFeeLp": 42.062423855,
+      "highWaterMark": 1.008147209603,
+      "discountToHighWaterBps": 63.080356,
+      "lockedProfitUsdc": 204.107495,
+      "assetMint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+      "lpMint": "AX6AuJEkhopUNwRprLpwSbKqpSeRnf2gsxeiPkvW2HRG",
+      "vaultLastUpdatedTs": "2026-06-29T18:33:16.000Z",
+      "vaultLastUpdatedPacific": "June 29, 2026 at 11:33:16 AM PDT",
+      "highWaterMarkLastUpdatedTs": "2026-06-29T18:33:16.000Z",
+      "highWaterMarkLastUpdatedPacific": "June 29, 2026 at 11:33:16 AM PDT"
     }
   ]
 }
