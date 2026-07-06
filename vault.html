@@ -946,6 +946,26 @@
             </div>
         </section>
 
+        <section class="chart-card">
+            <div class="chart-head">
+                <div>
+                    <h2 class="chart-title">JLP 3x USDC Borrow + Aster Funding</h2>
+                    <p class="chart-caption" id="usdcAsterChartCaption">PrimeNumber USDC-borrow Aster series shown net of KeyVault performance fees.</p>
+                </div>
+                <div class="chart-actions">
+                    <div class="period-controls" aria-label="USDC Aster chart period">
+                        <button class="period-btn active" data-usdc-aster-period="all" type="button">All</button>
+                        <button class="period-btn" data-usdc-aster-period="180" type="button">180D</button>
+                        <button class="period-btn" data-usdc-aster-period="90" type="button">90D</button>
+                        <button class="period-btn" data-usdc-aster-period="30" type="button">30D</button>
+                    </div>
+                </div>
+            </div>
+            <div class="chart-wrap">
+                <canvas id="usdcAsterChart"></canvas>
+            </div>
+        </section>
+
         <footer>
             Internal dashboard. Data is for informational review only and is not financial advice.
         </footer>
@@ -959,6 +979,7 @@
         const VOLTR_HISTORY_URL = 'data/voltr-cross-platform-share-history.json';
         const AUM_REFRESH_INTERVAL_MS = 60000;
         const TARGET_SERIES = '3x JLP (borrow SOL) + Aster Funding';
+        const USDC_ASTER_SERIES = '3x JLP (borrow USDC) + Aster Funding';
         const LEGACY_VAULT_NAME = 'Non-Cross-Platform Legacy Vault Performance';
         const LEGACY_VAULT_END_DATE = '2025-11-06';
         const NET_FEE_MODEL = {
@@ -973,6 +994,7 @@
 
         let returnChartInstance = null;
         let apyChartInstance = null;
+        let usdcAsterChartInstance = null;
         let legacyChartInstance = null;
         let reportData = null;
         let voltrData = null;
@@ -980,6 +1002,7 @@
         let aumRefreshTimer = null;
         let activeReturnPeriod = 'all';
         let activeApyPeriod = 'all';
+        let activeUsdcAsterPeriod = 'all';
         let showLegacyReturnOverlay = false;
         let showLegacyApyOverlay = false;
 
@@ -989,6 +1012,7 @@
         const sourceMeta = document.getElementById('sourceMeta');
         const returnChartCaption = document.getElementById('returnChartCaption');
         const apyChartCaption = document.getElementById('apyChartCaption');
+        const usdcAsterChartCaption = document.getElementById('usdcAsterChartCaption');
         const legacyOverlayToggle = document.getElementById('legacyOverlayToggle');
         const legacyApyOverlayToggle = document.getElementById('legacyApyOverlayToggle');
         const legacyMenuBtn = document.getElementById('legacyMenuBtn');
@@ -1087,11 +1111,15 @@
             return Number.isFinite(annualizedNet) ? (annualizedNet / 365) * Math.max(1, days) : null;
         }
 
-        function netReportCumulativeForPoint(point) {
+        function netSeriesCumulativeForPoint(point, metrics) {
             return netCumulativeFromGrossReturn(
                 point.value,
-                daysBetween(reportData.metrics.startDate, point.date)
+                daysBetween(metrics.startDate, point.date)
             );
+        }
+
+        function netReportCumulativeForPoint(point) {
+            return netSeriesCumulativeForPoint(point, reportData.metrics);
         }
 
         function dateAtNoon(dateString) {
@@ -1454,10 +1482,10 @@
             return Number.isFinite(parsed) ? parsed : null;
         }
 
-        function parseTargetSummary(html) {
+        function parseTargetSummary(html, seriesName = TARGET_SERIES) {
             const doc = new DOMParser().parseFromString(html, 'text/html');
             const targetCell = [...doc.querySelectorAll('.strategy-name')]
-                .find(cell => cell.textContent.trim() === TARGET_SERIES);
+                .find(cell => cell.textContent.trim() === seriesName);
             if (!targetCell) return null;
 
             const cells = [...targetCell.closest('tr').children].map(cell => cell.textContent.trim());
@@ -1469,6 +1497,59 @@
                 sevenDayAnnualized: parsePercentText(cells[5]),
                 thirtyDayAnnualized: parsePercentText(cells[6]),
                 ninetyDayAnnualized: parsePercentText(cells[7])
+            };
+        }
+
+        function extractReportSeriesPoints(option, labels, seriesName) {
+            const series = option?.series?.find(item => item.name === seriesName);
+            if (!series || !Array.isArray(series.data) || !labels.length) {
+                throw new Error(`Target series not found: ${seriesName}`);
+            }
+
+            const points = labels.map((date, index) => ({
+                date,
+                value: Number(series.data[index])
+            })).filter(point => point.date && Number.isFinite(point.value));
+
+            if (!points.length) throw new Error(`Target series did not include usable data points: ${seriesName}`);
+
+            return points;
+        }
+
+        function buildReportSeriesModel(seriesName, points, summary) {
+            const latest = points[points.length - 1];
+            const first = points[0];
+            const totalDays = points.length;
+            const cumulative = summary?.cumulative ?? latest.value;
+            const annualized = summary?.annualized ?? (cumulative / totalDays) * 365;
+            const seven = getLookbackReturn(points, 7);
+            const thirty = getLookbackReturn(points, 30);
+            const ninety = getLookbackReturn(points, 90);
+            const twelveMonth = getLookbackReturn(points, 365);
+
+            return {
+                seriesName,
+                points,
+                metrics: {
+                    startDate: summary?.startDate || first.date,
+                    endDate: summary?.endDate || latest.date,
+                    totalDays,
+                    cumulative,
+                    annualized,
+                    sevenDayAnnualized: summary?.sevenDayAnnualized ?? seven.annualized,
+                    sevenDayChange: seven.change,
+                    thirtyDayAnnualized: summary?.thirtyDayAnnualized ?? thirty.annualized,
+                    thirtyDayChange: thirty.change,
+                    ninetyDayAnnualized: summary?.ninetyDayAnnualized ?? ninety.annualized,
+                    ninetyDayChange: ninety.change,
+                    trailingTwelveMonthAnnualized: twelveMonth.isComplete ? twelveMonth.annualized : annualized,
+                    trailingTwelveMonthChange: twelveMonth.isComplete ? twelveMonth.change : cumulative,
+                    trailingTwelveMonthIsComplete: twelveMonth.isComplete,
+                    trailingTwelveMonthStartDate: twelveMonth.start?.date || first.date,
+                    trailingTwelveMonthAvailableDays: twelveMonth.availableDays,
+                    trailingTwelveMonthDaysUntilAvailable: twelveMonth.daysUntilAvailable,
+                    maxDrawdown: computeMaxDrawdown(points)
+                }
             };
         }
 
@@ -1517,55 +1598,25 @@
             const coverage = html.match(/Coverage:\s*([^<]+)/)?.[1]?.trim() || null;
             const option = JSON.parse(findJsonObjectAfter(html, 'chart2.setOption('));
             const labels = option?.xAxis?.data || [];
-            const series = option?.series?.find(item => item.name === TARGET_SERIES);
-            if (!series || !Array.isArray(series.data) || !labels.length) {
-                throw new Error(`Target series not found: ${TARGET_SERIES}`);
-            }
-
-            const points = labels.map((date, index) => ({
-                date,
-                value: Number(series.data[index])
-            })).filter(point => point.date && Number.isFinite(point.value));
-
-            if (!points.length) throw new Error('Target series did not include usable data points');
-
-            const latest = points[points.length - 1];
-            const first = points[0];
-            const summary = parseTargetSummary(html);
-            const totalDays = points.length;
-            const cumulative = summary?.cumulative ?? latest.value;
-            const annualized = summary?.annualized ?? (cumulative / totalDays) * 365;
-            const seven = getLookbackReturn(points, 7);
-            const thirty = getLookbackReturn(points, 30);
-            const ninety = getLookbackReturn(points, 90);
-            const twelveMonth = getLookbackReturn(points, 365);
+            const primarySeries = buildReportSeriesModel(
+                TARGET_SERIES,
+                extractReportSeriesPoints(option, labels, TARGET_SERIES),
+                parseTargetSummary(html)
+            );
+            const usdcAster = buildReportSeriesModel(
+                USDC_ASTER_SERIES,
+                extractReportSeriesPoints(option, labels, USDC_ASTER_SERIES),
+                parseTargetSummary(html, USDC_ASTER_SERIES)
+            );
 
             return {
                 source: SOURCE_REPORT_URL,
                 lastUpdated,
                 coverage,
-                seriesName: TARGET_SERIES,
-                points,
-                metrics: {
-                    startDate: summary?.startDate || first.date,
-                    endDate: summary?.endDate || latest.date,
-                    totalDays,
-                    cumulative,
-                    annualized,
-                    sevenDayAnnualized: summary?.sevenDayAnnualized ?? seven.annualized,
-                    sevenDayChange: seven.change,
-                    thirtyDayAnnualized: summary?.thirtyDayAnnualized ?? thirty.annualized,
-                    thirtyDayChange: thirty.change,
-                    ninetyDayAnnualized: summary?.ninetyDayAnnualized ?? ninety.annualized,
-                    ninetyDayChange: ninety.change,
-                    trailingTwelveMonthAnnualized: twelveMonth.isComplete ? twelveMonth.annualized : annualized,
-                    trailingTwelveMonthChange: twelveMonth.isComplete ? twelveMonth.change : cumulative,
-                    trailingTwelveMonthIsComplete: twelveMonth.isComplete,
-                    trailingTwelveMonthStartDate: twelveMonth.start?.date || first.date,
-                    trailingTwelveMonthAvailableDays: twelveMonth.availableDays,
-                    trailingTwelveMonthDaysUntilAvailable: twelveMonth.daysUntilAvailable,
-                    maxDrawdown: computeMaxDrawdown(points)
-                }
+                seriesName: primarySeries.seriesName,
+                points: primarySeries.points,
+                metrics: primarySeries.metrics,
+                usdcAster: usdcAster
             };
         }
 
@@ -1698,6 +1749,31 @@
                     return applyInvestorNetFeeModel(grossApy);
                 }),
                 legacyApyData: getCalendarMatchedLegacyApySeries(labels, comparison)
+            };
+        }
+
+        function getUsdcAsterChartSeries() {
+            const series = reportData?.usdcAster;
+            if (!series?.points?.length) {
+                return { labels: [], netData: [], startDate: null, endDate: null, latestNetReturn: null };
+            }
+
+            const latest = series.points[series.points.length - 1];
+            const startPoint = findPointOnOrAfter(series.points, series.metrics.startDate) || series.points[0];
+            const strategyPoints = filterPointsByPeriod(series.points, latest.date, activeUsdcAsterPeriod)
+                .filter(point => isOnOrAfter(point.date, startPoint.date));
+            const labels = strategyPoints.map(point => point.date);
+            const netData = strategyPoints.map(point => {
+                const grossReturn = rebaseCumulativeReturn(point.value, startPoint.value);
+                return netCumulativeFromGrossReturn(grossReturn, daysBetween(startPoint.date, point.date));
+            });
+
+            return {
+                labels,
+                netData,
+                startDate: startPoint.date,
+                endDate: latest.date,
+                latestNetReturn: netData[netData.length - 1] ?? null
             };
         }
 
@@ -2022,6 +2098,84 @@
                 : `Annualized investor net APY from ${formatDate(comparison.startDate)} through each report date. Toggle Legacy APY to compare against same-date legacy performance.`;
         }
 
+        function renderUsdcAsterChart() {
+            const { labels, netData, startDate, endDate, latestNetReturn } = getUsdcAsterChartSeries();
+
+            if (usdcAsterChartInstance) usdcAsterChartInstance.destroy();
+
+            if (!labels.length) {
+                usdcAsterChartCaption.textContent = 'USDC-borrow Aster data is unavailable in the current PrimeNumber report.';
+                return;
+            }
+
+            usdcAsterChartInstance = new Chart(document.getElementById('usdcAsterChart').getContext('2d'), {
+                type: 'line',
+                data: {
+                    labels,
+                    datasets: [{
+                        label: USDC_ASTER_SERIES,
+                        data: netData,
+                        borderColor: '#f59e0b',
+                        backgroundColor: 'rgba(245, 158, 11, 0.12)',
+                        borderWidth: 3,
+                        tension: 0.24,
+                        fill: true,
+                        pointRadius: 0,
+                        pointHoverRadius: 5
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: { mode: 'index', intersect: false },
+                    plugins: {
+                        legend: {
+                            display: true,
+                            labels: {
+                                color: '#8b8ba7',
+                                usePointStyle: true,
+                                boxWidth: 8,
+                                font: { size: 12, weight: '700' }
+                            }
+                        },
+                        tooltip: {
+                            backgroundColor: 'rgba(26, 26, 62, 0.96)',
+                            titleColor: '#fff',
+                            bodyColor: '#c8c8e0',
+                            callbacks: {
+                                title: items => formatDate(labels[items[0].dataIndex]),
+                                label: ctx => ` ${ctx.dataset.label}: ${formatPercent(ctx.parsed.y)}`
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            grid: { color: 'rgba(255, 255, 255, 0.05)' },
+                            ticks: {
+                                color: '#8b8ba7',
+                                maxTicksLimit: 9,
+                                callback: (_, index) => formatDate(labels[index])
+                            }
+                        },
+                        y: {
+                            grid: { color: 'rgba(255, 255, 255, 0.05)' },
+                            ticks: {
+                                color: '#8b8ba7',
+                                callback: value => `${Number(value).toFixed(0)}%`
+                            },
+                            title: {
+                                display: true,
+                                text: 'Net ROI',
+                                color: '#8b8ba7'
+                            }
+                        }
+                    }
+                }
+            });
+
+            usdcAsterChartCaption.textContent = `USDC-borrow Aster ROI is shown net of KeyVault performance fees from ${formatDate(startDate)} through ${formatDate(endDate)}. Latest net ROI: ${formatPercent(latestNetReturn)}.`;
+        }
+
         function renderSourceMeta() {
             const { metrics } = reportData;
             const comparison = getOverlapComparison();
@@ -2043,6 +2197,7 @@
             renderMetrics();
             renderReturnChart();
             renderApyChart();
+            renderUsdcAsterChart();
             renderSourceMeta();
             setStatus('ready', `Last timestamp: ${reportData.lastUpdated}`);
         }
@@ -2113,6 +2268,15 @@
                 document.querySelectorAll('[data-apy-period]').forEach(btn => btn.classList.remove('active'));
                 button.classList.add('active');
                 if (reportData) renderApyChart();
+            });
+        });
+
+        document.querySelectorAll('[data-usdc-aster-period]').forEach(button => {
+            button.addEventListener('click', () => {
+                activeUsdcAsterPeriod = button.dataset.usdcAsterPeriod;
+                document.querySelectorAll('[data-usdc-aster-period]').forEach(btn => btn.classList.remove('active'));
+                button.classList.add('active');
+                if (reportData) renderUsdcAsterChart();
             });
         });
 
