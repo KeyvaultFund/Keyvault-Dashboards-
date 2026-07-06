@@ -954,6 +954,10 @@
     <script>
         const SOURCE_REPORT_URL = ['https://app.', 'pr', 'imenumber.trade/data/jlp_report.html'].join('');
         const REPORT_PROXY_URL = `https://keyvault.deven-m-webster.workers.dev/?url=${encodeURIComponent(SOURCE_REPORT_URL)}`;
+        const VOLTR_VALUATION_URL = 'https://vault.primenumber.trade/api/pn-dashboard/valuation?product_name=PN_JLP_PROV1';
+        const VOLTR_VALUATION_PROXY_URL = `https://keyvault.deven-m-webster.workers.dev/?url=${encodeURIComponent(VOLTR_VALUATION_URL)}`;
+        const VOLTR_HISTORY_URL = 'data/voltr-cross-platform-share-history.json';
+        const AUM_REFRESH_INTERVAL_MS = 60000;
         const TARGET_SERIES = '3x JLP (borrow SOL) + Aster Funding';
         const LEGACY_VAULT_NAME = 'Non-Cross-Platform Legacy Vault Performance';
         const LEGACY_VAULT_END_DATE = '2025-11-06';
@@ -971,7 +975,9 @@
         let apyChartInstance = null;
         let legacyChartInstance = null;
         let reportData = null;
+        let voltrData = null;
         let freshnessStamp = null;
+        let aumRefreshTimer = null;
         let activeReturnPeriod = 'all';
         let activeApyPeriod = 'all';
         let showLegacyReturnOverlay = false;
@@ -1009,6 +1015,17 @@
             return `${value >= 0 ? '+' : ''}${value.toFixed(2)}%`;
         }
 
+        function formatCurrencyCompact(value) {
+            if (!Number.isFinite(value)) return '--';
+            const maximumFractionDigits = Math.abs(value) >= 1000000 ? 2 : 0;
+            return new Intl.NumberFormat('en-US', {
+                style: 'currency',
+                currency: 'USD',
+                maximumFractionDigits,
+                minimumFractionDigits: 0
+            }).format(value);
+        }
+
         function formatDate(dateString) {
             const [year, month, day] = String(dateString).split('-').map(Number);
             if (!year || !month || !day) return String(dateString);
@@ -1018,6 +1035,16 @@
                 year: 'numeric',
                 timeZone: 'America/Los_Angeles'
             }).format(new Date(Date.UTC(year, month - 1, day, 12)));
+        }
+
+        function formatPacificDateTime(dateLike) {
+            const date = new Date(dateLike);
+            if (Number.isNaN(date.getTime())) return String(dateLike || '');
+            return new Intl.DateTimeFormat('en-US', {
+                timeZone: 'America/Los_Angeles',
+                dateStyle: 'long',
+                timeStyle: 'long'
+            }).format(date);
         }
 
         function daysBetween(startDate, endDate) {
@@ -1542,6 +1569,49 @@
             };
         }
 
+        function parseVoltrHistory(history) {
+            const snapshots = Array.isArray(history?.snapshots)
+                ? history.snapshots
+                    .filter(snapshot => Number.isFinite(Number(snapshot.totalValueUsdc)))
+                    .sort((a, b) => {
+                        const dateOrder = String(a.date || '').localeCompare(String(b.date || ''));
+                        if (dateOrder !== 0) return dateOrder;
+                        return String(a.timestamp || '').localeCompare(String(b.timestamp || ''));
+                    })
+                : [];
+
+            if (!snapshots.length) return null;
+
+            return {
+                vault: history?.vault || null,
+                vaultName: history?.vaultName || 'Voltr vault',
+                latest: snapshots[snapshots.length - 1],
+                snapshots
+            };
+        }
+
+        function parseVoltrValuation(payload) {
+            const valuation = payload?.valuation || {};
+            const chainNavUsd = Number(valuation.chainNavUsd ?? valuation.chainBookNavUsd ?? valuation.estimatedNavUsd);
+            if (!Number.isFinite(chainNavUsd)) return null;
+
+            const timestamp = payload?.updatedAt || new Date().toISOString();
+            const sharePrice = Number(valuation.chainSharePrice ?? valuation.estimatedSharePrice);
+
+            return {
+                source: 'live-valuation',
+                vaultName: 'JLP Hedge Vault Pro V1',
+                latest: {
+                    date: String(timestamp).slice(0, 10),
+                    timestamp,
+                    capturedAtPacific: formatPacificDateTime(timestamp),
+                    totalValueUsdc: chainNavUsd,
+                    sharePrice: Number.isFinite(sharePrice) ? sharePrice : null,
+                    sourceUpdatedAt: payload?.updatedAt || null
+                }
+            };
+        }
+
         async function fetchStrategyReport() {
             const response = await fetch(appendCacheBust(REPORT_PROXY_URL), { cache: 'no-store' });
             if (!response.ok) throw new Error(`Performance data request failed: ${response.status}`);
@@ -1556,6 +1626,37 @@
             } catch {
                 return null;
             }
+        }
+
+        async function fetchVoltrLiveValuation() {
+            try {
+                const response = await fetch(appendCacheBust(VOLTR_VALUATION_PROXY_URL), { cache: 'no-store' });
+                if (!response.ok) throw new Error(`Live Voltr valuation request failed: ${response.status}`);
+                return parseVoltrValuation(await response.json());
+            } catch (error) {
+                console.warn('Live Voltr valuation unavailable', error);
+                return null;
+            }
+        }
+
+        async function fetchVoltrShareHistory() {
+            try {
+                const response = await fetch(appendCacheBust(VOLTR_HISTORY_URL), { cache: 'no-store' });
+                if (!response.ok) return null;
+                return response.json();
+            } catch (error) {
+                console.warn('Voltr vault history unavailable', error);
+                return null;
+            }
+        }
+
+        async function fetchInitialAumData() {
+            const liveData = await fetchVoltrLiveValuation();
+            if (liveData) return liveData;
+
+            const history = await fetchVoltrShareHistory();
+            const snapshotData = parseVoltrHistory(history);
+            return snapshotData ? { ...snapshotData, source: 'snapshot-fallback' } : null;
         }
 
         function getFilteredPoints() {
@@ -1600,6 +1701,52 @@
             };
         }
 
+        function getAumViewModel() {
+            const currentAum = Number(voltrData?.latest?.totalValueUsdc);
+            const hasCurrentAum = Number.isFinite(currentAum);
+            const sourceLabel = voltrData?.source === 'live-valuation'
+                ? 'Live Voltr valuation'
+                : 'Voltr snapshot fallback';
+            const timestamp = voltrData?.latest?.capturedAtPacific
+                || (voltrData?.latest?.timestamp ? formatPacificDateTime(voltrData.latest.timestamp) : '')
+                || (voltrData?.latest?.date ? formatDate(voltrData.latest.date) : '');
+
+            return {
+                hasCurrentAum,
+                value: formatCurrencyCompact(currentAum),
+                sourceLabel,
+                sourceText: hasCurrentAum && timestamp
+                    ? `${sourceLabel}: ${timestamp}`
+                    : 'Voltr AUM unavailable'
+            };
+        }
+
+        function renderAumDisplays() {
+            const aum = getAumViewModel();
+            const currentAumValue = document.getElementById('currentAumValue');
+            const currentAumSubtext = document.getElementById('currentAumSubtext');
+            const sourceAumValue = document.getElementById('sourceAumValue');
+            const sourceAumUpdate = document.getElementById('sourceAumUpdate');
+
+            if (currentAumValue) {
+                currentAumValue.textContent = aum.value;
+                currentAumValue.className = `metric-value ${aum.hasCurrentAum ? '' : 'pending'}`.trim();
+            }
+            if (currentAumSubtext) currentAumSubtext.textContent = aum.sourceText;
+            if (sourceAumValue) sourceAumValue.textContent = aum.value;
+            if (sourceAumUpdate) sourceAumUpdate.textContent = aum.sourceText;
+        }
+
+        function startAumRealtimeUpdates() {
+            if (aumRefreshTimer) window.clearInterval(aumRefreshTimer);
+            aumRefreshTimer = window.setInterval(async () => {
+                const liveData = await fetchVoltrLiveValuation();
+                if (!liveData) return;
+                voltrData = liveData;
+                renderAumDisplays();
+            }, AUM_REFRESH_INTERVAL_MS);
+        }
+
         function renderMetrics() {
             const { metrics } = reportData;
             const liveDays = impliedAnnualizationDays(metrics.cumulative, metrics.annualized, metrics.startDate, metrics.endDate);
@@ -1619,6 +1766,7 @@
             const headlineWindow = metrics.trailingTwelveMonthIsComplete
                 ? `${formatDate(metrics.trailingTwelveMonthStartDate)} through ${formatDate(metrics.endDate)}`
                 : `${metrics.trailingTwelveMonthAvailableDays} of 365 days captured - trailing 12M begins automatically when complete`;
+            const aum = getAumViewModel();
             metricsGrid.innerHTML = `
                 <div class="metric-card headline-metric">
                     <div class="headline-copy-block">
@@ -1641,6 +1789,14 @@
                     </div>
                     <div class="metric-value positive">${formatPercent(netLiveReturn)}</div>
                     <div class="metric-subtext">${formatDate(metrics.startDate)} through ${formatDate(metrics.endDate)}</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-label">
+                        Current AUM
+                        <span class="info-tip" tabindex="0" aria-label="Current AUM explanation" data-tooltip="Current AUM uses the live Voltr valuation endpoint for the requested vault and refreshes every minute. If that path is unavailable, the dashboard falls back to the latest local Voltr snapshot.">?</span>
+                    </div>
+                    <div class="metric-value ${aum.hasCurrentAum ? '' : 'pending'}" id="currentAumValue">${aum.value}</div>
+                    <div class="metric-subtext" id="currentAumSubtext">${aum.sourceText}</div>
                 </div>
                 <div class="metric-card">
                     <div class="metric-label">
@@ -1871,9 +2027,12 @@
             const comparison = getOverlapComparison();
             const coverage = reportData.coverage || `${metrics.startDate} through ${metrics.endDate}`;
             const stampText = freshnessStamp?.stampedAtEastern || 'Pending daily 5:00 PM ET stamp';
+            const aum = getAumViewModel();
             sourceMeta.innerHTML = `
                 Last timestamp: <strong>${reportData.lastUpdated}</strong><br>
                 Coverage: <strong>${coverage}</strong><br>
+                Current AUM: <strong id="sourceAumValue">${aum.value}</strong><br>
+                AUM update: <strong id="sourceAumUpdate">${aum.sourceText}</strong><br>
                 Display Basis: <strong>Investor Net Return</strong><br>
                 Vault go-live date: <strong>${formatDate(comparison.startDate)}</strong><br>
                 Daily stamp: <strong>${stampText}</strong>
@@ -1913,13 +2072,16 @@
                         </div>
                     </div>
                 `;
-                const [html, stamp] = await Promise.all([
+                const [html, stamp, initialAumData] = await Promise.all([
                     fetchStrategyReport(),
-                    fetchFreshnessStamp()
+                    fetchFreshnessStamp(),
+                    fetchInitialAumData()
                 ]);
                 freshnessStamp = stamp;
+                voltrData = initialAumData;
                 reportData = parseStrategyReport(html);
                 renderDashboard();
+                startAumRealtimeUpdates();
             } catch (error) {
                 console.error(error);
                 renderError(error);
