@@ -455,7 +455,7 @@
       <div class="logo-frame"><img class="logo" src="logo.png" alt="KeyVault"></div>
       <div class="badge">Illustrative planning model</div>
       <h1>Recovery Timeline Calculator</h1>
-      <p class="subtitle">Martin’s Version 2 monthly recovery model with the full Prime rebate added. Change the salary budget to see the effect on the $4.2M payoff timeline.</p>
+      <p class="subtitle">Martin’s Version 2 monthly recovery model with the full Prime rebate added. Change AUM, gross APY, or salaries to see the effect on the $4.2M payoff timeline.</p>
     </header>
 
     <div class="layout">
@@ -470,6 +470,15 @@
               <span class="suffix">$</span>
             </div>
             <div class="hint">The amount the business needs to recover.</div>
+          </div>
+
+          <div class="field">
+            <label for="year-one-aum">Year 1 ending AUM</label>
+            <div class="input-wrap">
+              <input id="year-one-aum" type="number" value="30000000" min="0" step="1000000">
+              <span class="suffix">$</span>
+            </div>
+            <div class="hint">Martin’s default is $30M. Changing this proportionally scales his monthly AUM-raise schedule.</div>
           </div>
 
           <div class="divider"></div>
@@ -492,7 +501,7 @@
             <div class="hint">Martin’s default is $450K total: $150K each for JD, Brett, and Deven. Changing this scales his monthly salary schedule.</div>
           </div>
 
-          <div class="source-note">Fixed in the background: Martin Version 2 raise and cost schedule, 2% management fee, and his original client-settlement treatment. The full Prime rebate—2.625% at a 21% KV gross APY—is retained entirely by KeyVault and added to recovery cash.</div>
+          <div class="source-note">Fixed in the background: Martin Version 2 raise pattern and cost schedule, 2% management fee, and his original client-settlement treatment. The selected Year 1 AUM scales the raise pattern. The full Prime rebate—2.625% at a 21% KV gross APY—is retained entirely by KeyVault and added to recovery cash.</div>
         </div>
       </section>
 
@@ -619,11 +628,12 @@
 
     const MARTIN_MANAGEMENT_FEE_APY = 2;
     const MARTIN_CLIENT_SETTLEMENT_APY = 14.8;
+    const MARTIN_BASE_YEAR_ONE_AUM = 30_000_000;
     const MARTIN_BASE_ANNUAL_SALARIES = 450_000;
     const PRIME_PERFORMANCE_FEE_PCT = 20;
     const PRIME_REBATE_PCT = 50;
 
-    const inputIds = ['recovery-target', 'gross-return', 'annual-salaries'];
+    const inputIds = ['recovery-target', 'year-one-aum', 'gross-return', 'annual-salaries'];
 
     function numberValue(id) {
       const value = Number.parseFloat(document.getElementById(id).value);
@@ -653,20 +663,23 @@
       return primePerformanceFeeApy * PRIME_REBATE_PCT / 100;
     }
 
-    function buildSchedule({ target, grossReturn, annualSalaries }) {
+    function buildSchedule({ target, yearOneAum, grossReturn, annualSalaries }) {
       const model = MODELS.v2;
       const schedule = [];
       let cumulativeAum = 0;
       let retainedEarnings = 0;
       let cumulativeRecovery = 0;
       let recoveryMonths = null;
+      const aumScale = MARTIN_BASE_YEAR_ONE_AUM > 0
+        ? yearOneAum / MARTIN_BASE_YEAR_ONE_AUM
+        : 0;
       const salaryScale = MARTIN_BASE_ANNUAL_SALARIES > 0
         ? annualSalaries / MARTIN_BASE_ANNUAL_SALARIES
         : 0;
       const primeRebateApy = calculatePrimeRebateApy(grossReturn);
 
       for (let index = 0; index < 60; index += 1) {
-        cumulativeAum += model.fund[index];
+        cumulativeAum += model.fund[index] * aumScale;
         const yieldBearingFunds = cumulativeAum + Math.max(0, retainedEarnings);
         const grossYield = yieldBearingFunds * grossReturn / 100 / 12;
         const managementFees = cumulativeAum * MARTIN_MANAGEMENT_FEE_APY / 100 / 12;
@@ -744,11 +757,13 @@
 
     function calculate() {
       const target = Math.max(0, numberValue('recovery-target'));
+      const yearOneAum = Math.max(0, numberValue('year-one-aum'));
       const grossReturn = Math.max(0, numberValue('gross-return'));
       const annualSalaries = Math.max(0, numberValue('annual-salaries'));
       const primeRebateApy = calculatePrimeRebateApy(grossReturn);
       const result = buildSchedule({
         target,
+        yearOneAum,
         grossReturn,
         annualSalaries
       });
@@ -756,7 +771,7 @@
       const yearTwo = result.annual[1];
       const month24 = result.schedule[23];
       const progress = target > 0 ? Math.min(100, Math.max(0, (month24.cumulativeRecovery / target) * 100)) : 0;
-      const scenarioText = `Martin Version 2 with the full ${primeRebateApy.toFixed(3)}% Prime rebate and a ${shortMoney(annualSalaries)} annual salary budget`;
+      const scenarioText = `Martin Version 2 scaled to ${shortMoney(yearOneAum)} Year 1 AUM, with the full ${primeRebateApy.toFixed(3)}% Prime rebate and a ${shortMoney(annualSalaries)} annual salary budget`;
 
       document.getElementById('result-months').textContent = result.recoveryMonths === null ? 'Beyond 5 yrs' : result.recoveryMonths.toFixed(1) + ' mo';
       document.getElementById('result-net-annual').textContent = shortMoney(yearOne.ebitda);
