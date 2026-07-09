@@ -1,0 +1,781 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="KeyVault recovery timeline planning calculator">
+  <title>KeyVault Recovery Timeline Calculator</title>
+  <link rel="icon" href="logo.png" type="image/png">
+  <style>
+    :root {
+      --ink: #071017;
+      --panel: rgba(13, 28, 40, 0.78);
+      --panel-solid: #0d1c28;
+      --line: rgba(90, 215, 255, 0.22);
+      --line-bright: rgba(90, 215, 255, 0.42);
+      --text: #f7fbff;
+      --muted: #9bb1c0;
+      --muted-2: #6f8797;
+      --cyan: #5ad7ff;
+      --blue: #249fe8;
+      --green: #36d47a;
+      --amber: #ffd166;
+      --red: #ff8b8b;
+      --mono: "IBM Plex Mono", "SFMono-Regular", Consolas, monospace;
+      --sans: "Segoe UI", Inter, system-ui, -apple-system, sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+
+    html { min-height: 100%; background: var(--ink); }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      padding: 20px;
+      color: var(--text);
+      font-family: var(--sans);
+      background:
+        radial-gradient(circle at 12% 0%, rgba(36, 159, 232, 0.13), transparent 32rem),
+        linear-gradient(145deg, #071017 0%, #0c1822 52%, #09131c 100%);
+    }
+
+    a { color: var(--cyan); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    .page { width: min(1180px, 100%); margin: 0 auto; }
+
+    .nav {
+      display: flex;
+      justify-content: space-between;
+      gap: 1rem;
+      margin: 0 auto 1.1rem;
+      color: var(--muted-2);
+      font-size: 0.78rem;
+    }
+
+    .nav span { color: var(--muted-2); }
+
+    header {
+      padding: 1.1rem 1rem 2rem;
+      text-align: center;
+    }
+
+    .logo-frame {
+      display: inline-flex;
+      padding: 0.75rem 1rem;
+      margin-bottom: 1.1rem;
+      border: 1px solid rgba(90, 215, 255, 0.16);
+      border-radius: 18px;
+      background: rgba(255, 255, 255, 0.03);
+      box-shadow: 0 18px 42px rgba(0, 0, 0, 0.28), 0 0 34px rgba(53, 195, 247, 0.1);
+    }
+
+    .logo {
+      width: min(250px, 70vw);
+      height: auto;
+      border-radius: 10px;
+      filter: invert(1) brightness(1.35);
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      margin-bottom: 0.85rem;
+      padding: 0.35rem 0.7rem;
+      border: 1px solid rgba(255, 209, 102, 0.35);
+      border-radius: 999px;
+      background: rgba(255, 209, 102, 0.08);
+      color: var(--amber);
+      font-size: 0.72rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    h1 {
+      margin: 0 0 0.65rem;
+      font-size: clamp(1.9rem, 4vw, 2.75rem);
+      letter-spacing: -0.03em;
+      background: linear-gradient(135deg, #d9f7ff, var(--cyan), var(--blue));
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+    }
+
+    .subtitle {
+      max-width: 720px;
+      margin: 0 auto;
+      color: var(--muted);
+      font-size: 1rem;
+      line-height: 1.55;
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: minmax(270px, 330px) minmax(0, 1fr);
+      gap: 1.25rem;
+      align-items: start;
+    }
+
+    .layout > *,
+    .results,
+    .card { min-width: 0; }
+
+    .card {
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: var(--panel);
+      box-shadow: 0 18px 40px rgba(0, 0, 0, 0.23);
+      backdrop-filter: blur(10px);
+    }
+
+    .card-inner { padding: 1.25rem; }
+
+    .card-title {
+      margin-bottom: 1.15rem;
+      padding-bottom: 0.7rem;
+      border-bottom: 1px solid rgba(90, 215, 255, 0.19);
+      color: var(--cyan);
+      font-size: 0.74rem;
+      font-weight: 800;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+    }
+
+    .field { margin-bottom: 1rem; }
+    .field:last-child { margin-bottom: 0; }
+
+    label {
+      display: block;
+      margin-bottom: 0.35rem;
+      color: var(--muted);
+      font-size: 0.78rem;
+      font-weight: 600;
+    }
+
+    .input-wrap { position: relative; }
+
+    .derived-value {
+      width: 100%;
+      padding: 0.68rem 0.75rem;
+      border: 1px solid rgba(54, 212, 122, 0.28);
+      border-radius: 9px;
+      background: rgba(54, 212, 122, 0.08);
+      color: var(--green);
+      font: 600 0.98rem var(--mono);
+    }
+
+    input[type="number"] {
+      width: 100%;
+      padding: 0.68rem 2.2rem 0.68rem 0.75rem;
+      border: 1px solid rgba(90, 215, 255, 0.2);
+      border-radius: 9px;
+      outline: none;
+      background: rgba(255, 255, 255, 0.075);
+      color: var(--text);
+      font: 0.88rem var(--mono);
+      -moz-appearance: textfield;
+    }
+
+    input[type="number"]::-webkit-inner-spin-button,
+    input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; }
+
+    input[type="number"]:focus {
+      border-color: var(--cyan);
+      background: rgba(255, 255, 255, 0.11);
+    }
+
+    select {
+      width: 100%;
+      padding: 0.68rem 0.75rem;
+      border: 1px solid rgba(90, 215, 255, 0.2);
+      border-radius: 9px;
+      outline: none;
+      background: #112532;
+      color: var(--text);
+      font: 0.88rem var(--sans);
+    }
+
+    select:focus { border-color: var(--cyan); }
+
+    input:disabled {
+      cursor: not-allowed;
+      opacity: 0.45;
+    }
+
+    .checkbox-field { margin-top: 1.1rem; }
+
+    .checkbox-label {
+      display: flex;
+      align-items: center;
+      gap: 0.55rem;
+      color: var(--text);
+      cursor: pointer;
+    }
+
+    .checkbox-label input { accent-color: var(--cyan); }
+
+    .suffix {
+      position: absolute;
+      top: 50%;
+      right: 0.75rem;
+      transform: translateY(-50%);
+      color: var(--muted-2);
+      font: 0.78rem var(--mono);
+      pointer-events: none;
+    }
+
+    .hint {
+      margin-top: 0.3rem;
+      color: var(--muted-2);
+      font-size: 0.68rem;
+      line-height: 1.4;
+    }
+
+    .divider { height: 1px; margin: 1.2rem 0; background: var(--line); }
+
+    .source-note,
+    .disclaimer {
+      padding: 0.8rem 0.9rem;
+      border-radius: 9px;
+      color: var(--muted);
+      font-size: 0.72rem;
+      line-height: 1.5;
+    }
+
+    .source-note {
+      border: 1px solid rgba(90, 215, 255, 0.2);
+      background: rgba(90, 215, 255, 0.06);
+    }
+
+    .disclaimer {
+      border: 1px solid rgba(255, 209, 102, 0.24);
+      background: rgba(255, 209, 102, 0.06);
+    }
+
+    .results { display: grid; gap: 1.25rem; }
+
+    .kpis {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 0.85rem;
+    }
+
+    .kpi {
+      min-height: 122px;
+      padding: 1rem;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: rgba(255, 255, 255, 0.045);
+      text-align: center;
+    }
+
+    .kpi.primary {
+      border-color: rgba(54, 212, 122, 0.4);
+      background: linear-gradient(145deg, rgba(54, 212, 122, 0.13), rgba(255, 255, 255, 0.04));
+    }
+
+    .kpi-label {
+      min-height: 2.1em;
+      color: var(--muted);
+      font-size: 0.7rem;
+      font-weight: 800;
+      letter-spacing: 0.07em;
+      line-height: 1.25;
+      text-transform: uppercase;
+    }
+
+    .kpi-value {
+      margin-top: 0.55rem;
+      color: var(--text);
+      font: 600 1.45rem var(--mono);
+      line-height: 1;
+    }
+
+    .kpi.primary .kpi-value { color: var(--green); font-size: 1.7rem; }
+
+    .kpi-sub {
+      margin-top: 0.4rem;
+      color: var(--muted-2);
+      font-size: 0.68rem;
+    }
+
+    .hero {
+      border-color: rgba(54, 212, 122, 0.3);
+      background: linear-gradient(135deg, rgba(54, 212, 122, 0.1), rgba(36, 159, 232, 0.08));
+    }
+
+    .hero-copy {
+      display: flex;
+      justify-content: space-between;
+      gap: 1rem;
+      align-items: end;
+      flex-wrap: wrap;
+    }
+
+    .eyebrow {
+      margin-bottom: 0.4rem;
+      color: var(--green);
+      font-size: 0.72rem;
+      font-weight: 800;
+      letter-spacing: 0.09em;
+      text-transform: uppercase;
+    }
+
+    .headline {
+      margin: 0;
+      font: 600 clamp(2rem, 5vw, 3.4rem) var(--mono);
+      letter-spacing: -0.06em;
+    }
+
+    .hero-caption {
+      max-width: 410px;
+      margin: 0;
+      color: var(--muted);
+      font-size: 0.83rem;
+      line-height: 1.5;
+    }
+
+    .progress-shell { margin-top: 1.25rem; }
+
+    .progress-labels {
+      display: flex;
+      justify-content: space-between;
+      gap: 0.75rem;
+      color: var(--muted-2);
+      font: 0.7rem var(--mono);
+    }
+
+    .progress-track {
+      height: 13px;
+      margin: 0.45rem 0 0.5rem;
+      overflow: hidden;
+      border: 1px solid rgba(90, 215, 255, 0.2);
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.08);
+    }
+
+    .progress-bar {
+      width: 0;
+      height: 100%;
+      border-radius: inherit;
+      background: linear-gradient(90deg, var(--blue), var(--green));
+      transition: width 0.2s ease;
+    }
+
+    .progress-caption { color: var(--muted-2); font-size: 0.7rem; }
+
+    .table-wrap { width: 100%; overflow-x: auto; }
+
+    table { width: 100%; border-collapse: collapse; }
+
+    th,
+    td {
+      padding: 0.72rem 0.35rem;
+      border-bottom: 1px solid rgba(90, 215, 255, 0.13);
+      text-align: right;
+      white-space: nowrap;
+    }
+
+    th:first-child,
+    td:first-child { text-align: left; }
+
+    th {
+      color: var(--muted-2);
+      font-size: 0.68rem;
+      font-weight: 800;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+
+    td { color: var(--text); font: 0.78rem var(--mono); }
+    td:first-child { color: var(--muted); font-family: var(--sans); }
+    tr:last-child td { border-bottom: 0; }
+    .positive { color: var(--green); }
+    .negative { color: var(--red); }
+
+    .formula {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.8rem;
+    }
+
+    .formula-box {
+      padding: 0.9rem;
+      border: 1px solid rgba(90, 215, 255, 0.15);
+      border-radius: 9px;
+      background: rgba(255, 255, 255, 0.035);
+    }
+
+    .formula-label {
+      margin-bottom: 0.35rem;
+      color: var(--muted-2);
+      font-size: 0.68rem;
+      text-transform: uppercase;
+    }
+
+    .formula-value { color: var(--cyan); font: 0.78rem var(--mono); line-height: 1.5; }
+
+    .warning { color: var(--amber) !important; }
+
+    footer {
+      padding: 1.1rem 0 0.2rem;
+      color: var(--muted-2);
+      font-size: 0.68rem;
+      line-height: 1.5;
+      text-align: center;
+    }
+
+    @media (max-width: 900px) {
+      .layout { grid-template-columns: 1fr; }
+      .inputs { max-width: none; }
+    }
+
+    @media (max-width: 650px) {
+      body { padding: 14px; }
+      .nav { align-items: flex-start; flex-direction: column; gap: 0.3rem; }
+      header { padding: 0.7rem 0 1.35rem; }
+      .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .kpi { min-height: 112px; }
+      .formula { grid-template-columns: 1fr; }
+      .card-inner { padding: 1rem; }
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <div class="nav">
+      <a href="index.html">← Back to dashboard</a>
+      <span>Investor / partner discussion model</span>
+    </div>
+
+    <header>
+      <div class="logo-frame"><img class="logo" src="logo.png" alt="KeyVault"></div>
+      <div class="badge">Illustrative planning model</div>
+      <h1>Recovery Timeline Calculator</h1>
+      <p class="subtitle">Martin’s Version 2 monthly recovery model with the full Prime rebate added. Change the salary budget to see the effect on the $4.2M payoff timeline.</p>
+    </header>
+
+    <div class="layout">
+      <section class="card inputs">
+        <div class="card-inner">
+          <div class="card-title">Model assumptions</div>
+
+          <div class="field">
+            <label for="recovery-target">Recovery target</label>
+            <div class="input-wrap">
+              <input id="recovery-target" type="number" value="4200000" min="0" step="100000">
+              <span class="suffix">$</span>
+            </div>
+            <div class="hint">The amount the business needs to recover.</div>
+          </div>
+
+          <div class="divider"></div>
+
+          <div class="field">
+            <label for="gross-return">KV Gross APY (after Prime fee)</label>
+            <div class="input-wrap">
+              <input id="gross-return" type="number" value="21" min="0" step="0.25">
+              <span class="suffix">%</span>
+            </div>
+            <div class="hint">Martin’s 21% assumption is the return after Prime’s 20% performance fee.</div>
+          </div>
+
+          <div class="field">
+            <label for="annual-salaries">Total annual salaries</label>
+            <div class="input-wrap">
+              <input id="annual-salaries" type="number" value="450000" min="0" step="50000">
+              <span class="suffix">$</span>
+            </div>
+            <div class="hint">Martin’s default is $450K total: $150K each for JD, Brett, and Deven. Changing this scales his monthly salary schedule.</div>
+          </div>
+
+          <div class="source-note">Fixed in the background: Martin Version 2 raise and cost schedule, 2% management fee, and his original client-settlement treatment. The full Prime rebate—2.625% at a 21% KV gross APY—is retained entirely by KeyVault and added to recovery cash.</div>
+        </div>
+      </section>
+
+      <section class="results">
+        <div class="kpis">
+          <div class="kpi primary">
+            <div class="kpi-label">Estimated recovery time</div>
+            <div class="kpi-value" id="result-months">—</div>
+            <div class="kpi-sub">from the start of the raise</div>
+          </div>
+          <div class="kpi">
+            <div class="kpi-label">Year 1 modeled EBITDA</div>
+            <div class="kpi-value" id="result-net-annual">—</div>
+            <div class="kpi-sub">after operating costs and salaries</div>
+          </div>
+          <div class="kpi">
+            <div class="kpi-label">Year 2 modeled EBITDA</div>
+            <div class="kpi-value" id="result-year-one">—</div>
+            <div class="kpi-sub">with steady-state salary overhead</div>
+          </div>
+          <div class="kpi">
+            <div class="kpi-label">Annual salary budget</div>
+            <div class="kpi-value" id="result-rate">—</div>
+            <div class="kpi-sub">adjustable in the model</div>
+          </div>
+        </div>
+
+        <div class="card hero">
+          <div class="card-inner">
+            <div class="hero-copy">
+              <div>
+                <div class="eyebrow">Recovery conclusion</div>
+                <h2 class="headline" id="headline">—</h2>
+              </div>
+              <p class="hero-caption" id="hero-caption">Change the assumptions on the left to see the recovery timeline update.</p>
+            </div>
+            <div class="progress-shell">
+              <div class="progress-labels"><span>Recovery progress at month 24</span><span id="progress-percent">0%</span></div>
+              <div class="progress-track"><div class="progress-bar" id="progress-bar"></div></div>
+              <div class="progress-caption" id="progress-caption">—</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-inner">
+            <div class="card-title">Illustrative cash-recovery path</div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Milestone</th>
+                    <th>AUM</th>
+                    <th>Yield-bearing funds</th>
+                    <th>Monthly EBITDA</th>
+                    <th>Cumulative recovered</th>
+                  </tr>
+                </thead>
+                <tbody id="milestone-body"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-inner">
+            <div class="card-title">Simple model logic</div>
+            <div class="formula">
+              <div class="formula-box">
+                <div class="formula-label">Monthly recovery cash</div>
+                <div class="formula-value">Martin’s modeled EBITDA + full Prime rebate, using the selected salary budget</div>
+              </div>
+              <div class="formula-box">
+                <div class="formula-label">Salary adjustment</div>
+                <div class="formula-value">Martin’s monthly salary schedule × selected annual salaries ÷ $450K</div>
+              </div>
+            </div>
+            <div class="disclaimer" style="margin-top:0.85rem;">Illustrative planning model only. It follows Martin’s Version 2 monthly raise, cost, client-settlement, and retained-earnings structure, then adds the full Prime rebate to recovery cash. It does not model taxes, losses, debt interest, liquidity timing, or guarantees.</div>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <footer>Prepared for investor and partner conversations. Replace the editable assumptions with approved operating numbers before external circulation.</footer>
+  </main>
+
+  <script>
+    const GENERAL_DIRECT_COSTS = Array.from({ length: 60 }, (_, index) => {
+      if (index < 12) return 1500;
+      if (index < 24) return 2000;
+      if (index < 36) return 2500;
+      if (index < 48) return 3000;
+      return 3500;
+    });
+
+    const MODELS = {
+      v1: {
+        label: 'Version 1 — base raise',
+        hint: '$2M in months 1–12, then $3M/month.',
+        fund: Array(12).fill(2_000_000).concat(Array(48).fill(3_000_000)),
+        navCapital: [
+          -400, -400, -400, -400, -500, -600, -700, -800, -900, -1000, -1100, -1200,
+          -1350, -1500, -1650, -1800, -1950, -2100, -2250, -2400, -2550, -2700, -2850, -3000,
+          -3150, -3300, -3450, -3600, -3750, -3900, -4050, -4200, -4350, -4500, -4650, -4800,
+          -4950, -5100, -5250, -5400, -5550, -5700, -5850, -6000, -6150, -6300, -6450, -6600,
+          -6750, -5750, -5875, -6000, -6125, -6250, -6375, -6500, -6625, -6750, -6875, -7000
+        ],
+        salary: [-9266.6666667, -22933.3333333, -36600, ...Array(57).fill(-37500)]
+      },
+      v2: {
+        label: 'Version 2 — faster raise',
+        hint: '$5M in months 1–2, $2M in months 3–12, then $3M/month.',
+        fund: Array(2).fill(5_000_000).concat(Array(10).fill(2_000_000), Array(48).fill(3_000_000)),
+        navCapital: [
+          -400, -500, -600, -700, -800, -900, -1000, -1100, -1200, -1300, -1400, -1500,
+          -1650, -1800, -1950, -2100, -2250, -2400, -2550, -2700, -2850, -3000, -3150, -3300,
+          -3450, -3600, -3750, -3900, -4050, -4200, -4350, -4500, -4650, -4800, -4950, -5100,
+          -5250, -5400, -5550, -5700, -5850, -6000, -6150, -6300, -6450, -6600, -6750, -6900,
+          -7050, -6000, -6125, -6250, -6375, -6500, -6625, -6750, -6875, -7000, -7125, -7250
+        ],
+        salary: [-29766.6666667, ...Array(59).fill(-37500)]
+      }
+    };
+
+    const MARTIN_MANAGEMENT_FEE_APY = 2;
+    const MARTIN_CLIENT_SETTLEMENT_APY = 14.8;
+    const MARTIN_BASE_ANNUAL_SALARIES = 450_000;
+    const PRIME_PERFORMANCE_FEE_PCT = 20;
+    const PRIME_REBATE_PCT = 50;
+
+    const inputIds = ['recovery-target', 'gross-return', 'annual-salaries'];
+
+    function numberValue(id) {
+      const value = Number.parseFloat(document.getElementById(id).value);
+      return Number.isFinite(value) ? value : 0;
+    }
+
+    function money(value, decimals = 0) {
+      if (!Number.isFinite(value)) return '—';
+      const sign = value < 0 ? '-$' : '$';
+      const absolute = Math.abs(value);
+      return sign + absolute.toLocaleString('en-US', { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+    }
+
+    function shortMoney(value) {
+      if (!Number.isFinite(value)) return '—';
+      const sign = value < 0 ? '-$' : '$';
+      const absolute = Math.abs(value);
+      if (absolute >= 1_000_000) return sign + (absolute / 1_000_000).toFixed(absolute >= 10_000_000 ? 0 : 1) + 'M';
+      if (absolute >= 1_000) return sign + (absolute / 1_000).toFixed(absolute >= 100_000 ? 0 : 1) + 'K';
+      return money(value);
+    }
+
+    function calculatePrimeRebateApy(grossReturn) {
+      const primeNetFactor = 1 - PRIME_PERFORMANCE_FEE_PCT / 100;
+      const primeGrossApy = primeNetFactor > 0 ? grossReturn / primeNetFactor : 0;
+      const primePerformanceFeeApy = primeGrossApy * PRIME_PERFORMANCE_FEE_PCT / 100;
+      return primePerformanceFeeApy * PRIME_REBATE_PCT / 100;
+    }
+
+    function buildSchedule({ target, grossReturn, annualSalaries }) {
+      const model = MODELS.v2;
+      const schedule = [];
+      let cumulativeAum = 0;
+      let retainedEarnings = 0;
+      let cumulativeRecovery = 0;
+      let recoveryMonths = null;
+      const salaryScale = MARTIN_BASE_ANNUAL_SALARIES > 0
+        ? annualSalaries / MARTIN_BASE_ANNUAL_SALARIES
+        : 0;
+      const primeRebateApy = calculatePrimeRebateApy(grossReturn);
+
+      for (let index = 0; index < 60; index += 1) {
+        cumulativeAum += model.fund[index];
+        const yieldBearingFunds = cumulativeAum + Math.max(0, retainedEarnings);
+        const grossYield = yieldBearingFunds * grossReturn / 100 / 12;
+        const managementFees = cumulativeAum * MARTIN_MANAGEMENT_FEE_APY / 100 / 12;
+        const primeRebate = yieldBearingFunds * primeRebateApy / 100 / 12;
+        const clientSettlement = cumulativeAum * MARTIN_CLIENT_SETTLEMENT_APY / 100 / 12;
+        const directCosts = GENERAL_DIRECT_COSTS[index] + Math.abs(model.navCapital[index]);
+        const generalOverhead = 2500;
+        const operatingCosts = directCosts + generalOverhead;
+        const salaries = Math.abs(model.salary[index]) * salaryScale;
+        const ebitda = grossYield + managementFees + primeRebate - clientSettlement - operatingCosts - salaries;
+        const recoveryCash = ebitda;
+        const previousRecovery = cumulativeRecovery;
+
+        cumulativeRecovery += recoveryCash;
+        retainedEarnings = Math.max(0, retainedEarnings + recoveryCash);
+
+        if (recoveryMonths === null && cumulativeRecovery >= target && cumulativeRecovery > previousRecovery) {
+          const fraction = (target - previousRecovery) / (cumulativeRecovery - previousRecovery);
+          recoveryMonths = index + Math.min(1, Math.max(0, fraction));
+        }
+
+        schedule.push({
+          month: index + 1,
+          aum: cumulativeAum,
+          yieldBearingFunds,
+          grossYield,
+          managementFees,
+          primeRebate,
+          clientSettlement,
+          directCosts,
+          generalOverhead,
+          operatingCosts,
+          salaries,
+          ebitda,
+          recoveryCash,
+          cumulativeRecovery
+        });
+      }
+
+      const annual = Array.from({ length: 5 }, (_, yearIndex) => {
+        const rows = schedule.slice(yearIndex * 12, yearIndex * 12 + 12);
+        const sum = key => rows.reduce((total, row) => total + row[key], 0);
+        return {
+          year: yearIndex + 1,
+          endingAum: rows[rows.length - 1].aum,
+          grossYield: sum('grossYield'),
+          managementFees: sum('managementFees'),
+          primeRebate: sum('primeRebate'),
+          clientSettlement: sum('clientSettlement'),
+          operatingCosts: sum('operatingCosts'),
+          salaries: sum('salaries'),
+          ebitda: sum('ebitda')
+        };
+      });
+
+      return { schedule, annual, recoveryMonths };
+    }
+
+    function renderMilestones(schedule) {
+      const months = [1, 6, 12, 18, 24];
+      const body = document.getElementById('milestone-body');
+      body.innerHTML = months.map(month => {
+        const row = schedule[month - 1];
+        const ebitdaClass = row.ebitda >= 0 ? 'positive' : 'negative';
+        const cumulativeClass = row.cumulativeRecovery >= 0 ? 'positive' : 'negative';
+        return `<tr>
+          <td>Month ${row.month}</td>
+          <td>${shortMoney(row.aum)}</td>
+          <td>${shortMoney(row.yieldBearingFunds)}</td>
+          <td class="${ebitdaClass}">${shortMoney(row.ebitda)}</td>
+          <td class="${cumulativeClass}">${shortMoney(row.cumulativeRecovery)}</td>
+        </tr>`;
+      }).join('');
+    }
+
+    function calculate() {
+      const target = Math.max(0, numberValue('recovery-target'));
+      const grossReturn = Math.max(0, numberValue('gross-return'));
+      const annualSalaries = Math.max(0, numberValue('annual-salaries'));
+      const primeRebateApy = calculatePrimeRebateApy(grossReturn);
+      const result = buildSchedule({
+        target,
+        grossReturn,
+        annualSalaries
+      });
+      const yearOne = result.annual[0];
+      const yearTwo = result.annual[1];
+      const month24 = result.schedule[23];
+      const progress = target > 0 ? Math.min(100, Math.max(0, (month24.cumulativeRecovery / target) * 100)) : 0;
+      const scenarioText = `Martin Version 2 with the full ${primeRebateApy.toFixed(3)}% Prime rebate and a ${shortMoney(annualSalaries)} annual salary budget`;
+
+      document.getElementById('result-months').textContent = result.recoveryMonths === null ? 'Beyond 5 yrs' : result.recoveryMonths.toFixed(1) + ' mo';
+      document.getElementById('result-net-annual').textContent = shortMoney(yearOne.ebitda);
+      document.getElementById('result-net-annual').classList.toggle('warning', yearOne.ebitda < 0);
+      document.getElementById('result-year-one').textContent = shortMoney(yearTwo.ebitda);
+      document.getElementById('result-year-one').classList.toggle('warning', yearTwo.ebitda < 0);
+      document.getElementById('result-rate').textContent = shortMoney(annualSalaries);
+      document.getElementById('headline').textContent = result.recoveryMonths === null ? 'Recovery not reached' : result.recoveryMonths.toFixed(1) + ' months';
+      document.getElementById('hero-caption').textContent = result.recoveryMonths === null
+        ? `${scenarioText}. The ${shortMoney(target)} target is not reached within the 60-month model horizon.`
+        : `${scenarioText}. Cumulative modeled recovery reaches ${shortMoney(target)} during month ${Math.ceil(result.recoveryMonths)}.`;
+      document.getElementById('progress-percent').textContent = progress.toFixed(0) + '%';
+      document.getElementById('progress-bar').style.width = progress.toFixed(2) + '%';
+      document.getElementById('progress-caption').textContent = `${shortMoney(month24.cumulativeRecovery)} recovered by month 24 against a ${shortMoney(target)} target.`;
+      renderMilestones(result.schedule);
+    }
+
+    inputIds.forEach(id => document.getElementById(id).addEventListener('input', calculate));
+    calculate();
+  </script>
+</body>
+</html>
