@@ -4,7 +4,7 @@
   "timezone": "America/Los_Angeles",
   "targetDailyStampHourLocal": 14,
   "targetDailyStampLabel": "2:00 PM PT",
-  "lastUpdated": "2026-07-27T15:52:46.287Z",
+  "lastUpdated": "2026-07-27T21:01:47.873Z",
   "snapshots": [
     {
       "date": "2026-04-15",
@@ -638,9 +638,9 @@
     },
     {
       "date": "2026-07-27",
-      "timestamp": "2026-07-27T15:52:46.287Z",
-      "capturedAtPacific": "July 27, 2026 at 8:52:46 AM PDT",
-      "slot": 435567114,
+      "timestamp": "2026-07-27T21:01:47.873Z",
+      "capturedAtPacific": "July 27, 2026 at 2:01:47 PM PDT",
+      "slot": 435611119,
       "sharePrice": 1.001787779785,
       "circulatingSharePrice": 1.002016573282,
       "totalValueUsdc": 184544.562381,
