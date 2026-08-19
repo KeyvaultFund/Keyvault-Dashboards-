@@ -1,12 +1,12 @@
 {
   "strategy": "3x JLP (borrow SOL) + Aster Funding",
   "startDate": "2025-11-06",
-  "endDate": "2026-08-18",
-  "cumulative": 18.54,
-  "annualized": 23.66,
-  "sevenDayRollingApy": 7.08,
-  "thirtyDayRollingApy": 7.4,
-  "ninetyDayRollingApy": 19.07,
+  "endDate": "2026-08-19",
+  "cumulative": 18.52,
+  "annualized": 23.56,
+  "sevenDayRollingApy": 5.45,
+  "thirtyDayRollingApy": 6.69,
+  "ninetyDayRollingApy": 18.8,
   "points": [
     {
       "date": "2025-11-06",
@@ -1151,7 +1151,11 @@
     {
       "date": "2026-08-18",
       "roi": 18.54
+    },
+    {
+      "date": "2026-08-19",
+      "roi": 18.52
     }
   ],
-  "fetchedAt": "2026-08-18T21:10:12.607Z"
+  "fetchedAt": "2026-08-19T21:13:11.303Z"
 }
